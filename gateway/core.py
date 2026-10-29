@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass, field
 
 from .audit import AuditLog, hash_text
+from .budgets import Ledger
 from .identity import Identity
 from .policy import Policy
 from .providers import build_providers
@@ -32,6 +33,7 @@ class Gateway:
         self.audit = audit
         self.providers = providers if providers is not None else build_providers(policy.models)
         self._n = 0
+        self.ledger = Ledger.from_records(audit.records())
 
     # -- helpers ---------------------------------------------------------
     def _prompt_field(self, prompt: str):
@@ -57,6 +59,9 @@ class Gateway:
         self._log(rid, who, "request", "received", model=model, prompt=self._prompt_field(prompt),
                   prompt_chars=len(prompt), labels=labels or [])
 
+        reasons: list[str] = []
+        fired: list[str] = []
+
         def block(policy_name, reason):
             self._log(rid, who, "decision", "blocked", policy=policy_name, model=model, reason=reason,
                       latency_ms=round((time.perf_counter() - t0) * 1000, 2))
@@ -64,6 +69,34 @@ class Gateway:
 
         if model not in allowed:
             return block("models.allowlist", f"department '{who.dept}' may not use model '{model}'")
+
+        # Budgets.
+        warn_pct = self.policy.budgets.get("warn_at_pct", 80)
+        bs = self.ledger.status(who.dept, dept, warn_pct)
+        if bs.state == "over":
+            action = dept.get("at_limit", self.policy.budgets.get("at_limit", "block"))
+            fb = dept.get("fallback_model")
+            over = f"monthly budget reached for {who.dept}: ${bs.spent_usd:.2f} of ${bs.limit_usd:.2f}"
+            if action == "route_cheaper" and fb:
+                # Spend continues past the limit, but only on the cheaper model.
+                fired.append("budgets.route_cheaper")
+                reasons.append(over + (f"; routed {model} -> {fb}" if fb != model else f"; using {fb}"))
+                model = fb
+            else:
+                return block("budgets.at_limit", over)
+        elif bs.state == "warn":
+            fired.append("budgets.warn"); reasons.append(f"{bs.pct:.0f}% of monthly budget used (${bs.spent_usd:.2f}/${bs.limit_usd:.2f})")
+
+        # Labels: restricted data never goes to a hosted model. Checked last so no
+        # earlier reroute (e.g. budget fallback) can send it to a hosted model.
+        no_hosted = [l for l in (labels or []) if not self.policy.labels.get(l, {}).get("allow_hosted_model", True)]
+        if no_hosted and self.policy.models[model].get("hosted", False):
+            local = [m for m in allowed if not self.policy.models[m].get("hosted", False)]
+            if not local:
+                return block("labels.no_hosted", f"labels {no_hosted} may not go to a hosted model and dept has no on-prem model")
+            fired.append("labels.no_hosted"); reasons.append(f"rerouted {model} -> {local[0]} for labels {no_hosted}")
+            model = local[0]
+
         if model not in self.providers:
             return block("models.available", f"model '{model}' is not configured or has no credentials")
 
@@ -74,6 +107,8 @@ class Gateway:
             return block("provider.error", f"provider error: {type(e).__name__}")
         cost = self.cost(model, c.tokens_in, c.tokens_out)
         latency = round((time.perf_counter() - t0) * 1000, 2)
-        self._log(rid, who, "decision", "allowed", model=model, tokens_in=c.tokens_in, tokens_out=c.tokens_out,
-                  cost_usd=cost, latency_ms=latency)
-        return Result("allowed", c.text, model, [], c.tokens_in, c.tokens_out, cost, rid)
+        outcome = "warned" if reasons else "allowed"
+        rec = self._log(rid, who, "decision", outcome, policy=",".join(fired) or None, reasons=reasons, model=model,
+                        tokens_in=c.tokens_in, tokens_out=c.tokens_out, cost_usd=cost, latency_ms=latency)
+        self.ledger.add(rec)
+        return Result(outcome, c.text, model, reasons, c.tokens_in, c.tokens_out, cost, rid)

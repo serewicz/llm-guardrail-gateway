@@ -9,11 +9,22 @@ models:
   hosted-large:  { provider: mock, hosted: true,  usd_per_1k_in: 0.005,  usd_per_1k_out: 0.015 }
   utility-rag:   { provider: utility-rag, hosted: false, base_url: "http://localhost:8000", usd_per_1k_in: 0.0002, usd_per_1k_out: 0.0002 }
 
+# monthly_budget_usd: omit for no budget. at_limit: block | route_cheaper (needs fallback_model).
 departments:
-  water-operations: { models: [onprem-llama, hosted-small, utility-rag] }
-  legal:            { models: [onprem-llama] }      # no hosted models
-  it:               { models: [hosted-large, hosted-small, onprem-llama] }
-  unassigned:       { models: [onprem-llama] }
+  water-operations: { monthly_budget_usd: 200, models: [onprem-llama, hosted-small, utility-rag] }
+  legal:            { monthly_budget_usd: 100, models: [onprem-llama] }      # no hosted models
+  it:               { monthly_budget_usd: 500, models: [hosted-large, hosted-small, onprem-llama],
+                      at_limit: route_cheaper, fallback_model: hosted-small }
+  unassigned:       { monthly_budget_usd: 5,   models: [onprem-llama] }
+
+labels:
+  cip-restricted:   { allow_hosted_model: false }
+  pii:              { allow_hosted_model: false }
+  public:           { allow_hosted_model: true }
+
+budgets:
+  warn_at_pct: 80
+  at_limit: block         # default; departments can override
 
 # DEMO identity map. In production this comes from SSO group claims.
 users:
