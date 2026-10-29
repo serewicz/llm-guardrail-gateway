@@ -1,0 +1,25 @@
+# Policy as code. Changes go through pull-request review like any other code.
+# All departments, users and prices here are FICTIONAL demo values.
+version: "0.1-demo"
+default_dept: unassigned
+
+models:
+  onprem-llama:  { provider: mock, hosted: false, usd_per_1k_in: 0.0002, usd_per_1k_out: 0.0002 }
+  hosted-small:  { provider: mock, hosted: true,  usd_per_1k_in: 0.0005, usd_per_1k_out: 0.0015 }
+  hosted-large:  { provider: mock, hosted: true,  usd_per_1k_in: 0.005,  usd_per_1k_out: 0.015 }
+  utility-rag:   { provider: utility-rag, hosted: false, base_url: "http://localhost:8000", usd_per_1k_in: 0.0002, usd_per_1k_out: 0.0002 }
+
+departments:
+  water-operations: { models: [onprem-llama, hosted-small, utility-rag] }
+  legal:            { models: [onprem-llama] }      # no hosted models
+  it:               { models: [hosted-large, hosted-small, onprem-llama] }
+  unassigned:       { models: [onprem-llama] }
+
+# DEMO identity map. In production this comes from SSO group claims.
+users:
+  maria: water-operations
+  lee: legal
+  dev: it
+
+audit:
+  log_prompt_text: hash   # full | hash | omit
