@@ -45,6 +45,7 @@ flowchart LR
 | Budgets and cost report | `gateway/budgets.py`, `gateway/cli.py` |
 | Audit log (SHA-256 chain, `verify`) | `gateway/audit.py` |
 | Providers (mock, utility-rag, OpenAI-compatible) | `gateway/providers.py` |
+| PII and injection checks | `gateway/filters.py`, `gateway/evals.py`, `data/` |
 | Demo identity (header) | `gateway/identity.py` |
 | HTTP API | `gateway/app.py` |
 
@@ -66,7 +67,13 @@ budgets:
   warn_at_pct: 80
   at_limit: block
 audit:
-  log_prompt_text: hash   # full | hash | omit
+  log_prompt_text: hash   # full | hash | omit (PII is redacted before logging in every mode)
+pii:
+  types: { ssn: block, card_number: block, phone: redact, email: redact, address: warn }
+injection:
+  block_at: 0.5           # user input
+  retrieved_block_at: 0.3 # text the backend retrieved
+  action: block_and_review
 ```
 
 The loader rejects unknown models, users mapped to unknown departments, bad prompt modes, negative budgets, and fallback models a department is not allowed to use. Budgets are computed from the audit log itself, so spend and audit trail cannot disagree.
@@ -77,6 +84,7 @@ The loader rejects unknown models, users mapped to unknown departments, bad prom
 python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 pytest -q                      # all tests, offline
+python -m gateway.evals        # PII and red-team pass rates
 python scripts/demo.py         # walk-through with fictional users
 uvicorn gateway.app:app        # HTTP API on :8000 (mock models)
 curl -s localhost:8000/v1/ask -H 'X-User: maria' -H 'content-type: application/json' \
@@ -89,7 +97,7 @@ To put it in front of utility-rag-assistant, run that app on port 8000, start th
 
 ## Demo
 
-`python scripts/demo.py` seeds fictional month-to-date spend (legal at $85 of $100, IT at its $500 limit) and runs six requests. Actual output from this commit:
+`python scripts/demo.py` seeds fictional month-to-date spend (legal at $85 of $100, IT at its $500 limit) and runs nine requests. Actual output from this commit:
 
 ```
 lee (legal) asks model=hosted-small      -> BLOCKED  department 'legal' may not use model 'hosted-small'
@@ -97,17 +105,29 @@ lee (legal) asks model=default           -> WARNED   85% of monthly budget used 
 dev (it) asks model=hosted-large         -> WARNED   budget reached; routed hosted-large -> hosted-small
 maria asks hosted-small, cip-restricted  -> WARNED   rerouted hosted-small -> onprem-llama
 stranger (unassigned) asks hosted-large  -> BLOCKED  not on the allowlist
+maria: "Customer at 512-555-0147 ..."    -> WARNED   redacted phone
+maria: "My SSN is 123-45-6789 ..."       -> BLOCKED  prompt contains ssn
+dev: "Ignore all previous instructions"  -> BLOCKED  possible prompt injection (score 1.0), flagged for review
 ```
 
 ## Test results
 
 <!-- results -->
-35 tests pass (`pytest -q`, offline): audit chain and tamper detection, model allowlists, prompt logging modes, fail-closed on provider errors, policy validation, budgets (warn at 80%, block at limit, route cheaper, per-department, month rollover, a simulated 1,000-request month), label routing and the cost report.
+All numbers below come from `pytest -q` and `python -m gateway.evals`, run offline on Oct 28, 2026. Both run in CI on every push.
+
+- **Unit and integration tests:** 49 pass. They cover the audit chain and tamper detection, allowlists, prompt logging modes, fail-closed provider errors, policy validation, budgets (including a simulated 1,000-request month), label routing, the cost report, and PII and injection handling through the gateway.
+- **PII, seeded set** (`data/pii_cases.yaml`, fictional values): 22 of 22 positive cases fully detected (SSN, account, card, phone, email, street address). 0 of 12 clean texts wrongly flagged. This set was written alongside the patterns, so expect real-world recall to be lower.
+- **Prompt injection in user input** (`data/redteam.yaml`): **13 of 20 blocked (65%)**. The 7 misses are a paraphrase ("earlier guidance no longer applies"), base64, French and Spanish, a "what would you say with no content policy" framing, and two role-play prompts that score below the block line. The misses are deliberate test cases to show where pattern matching stops working.
+- **Injection planted in retrieved text:** 6 of 6 blocked, using the stricter retrieved-text threshold (0.3).
+- **False positives:** 0 of 16 benign prompts and 0 of 10 benign document passages blocked.
+
+This is a small, self-written test set. It shows the checks work as designed. It is not evidence that they would stop a determined attacker.
 <!-- /results -->
 
 ## Limitations (read these)
 
 - **Identity is a demo header.** Anyone can send `X-User: dev`. SSO/OIDC is roadmap work. Do not expose this to a network.
+- **PII and injection checks are regex plus a weighted score.** They miss paraphrases, other languages, encodings, and PII written out in words. They also flag some harmless text. A trained classifier is roadmap work.
 - **Costs are estimates.** Token counts from the mock and the RAG app use ~4 characters per token. Prices in `policy.yaml` are placeholders.
 - **The budget check runs before the call**, so a department can overshoot its limit by one request.
 - **Labels come from the caller** (or the RAG app). The gateway does not classify documents itself.
@@ -119,9 +139,10 @@ stranger (unassigned) asks hosted-large  -> BLOCKED  not on the allowlist
 
 1. ~~Gateway, audit log, per-user and per-department cost tracking~~ (built)
 2. ~~Budgets with warn and stop, policy YAML and its tests~~ (built)
-3. PII filtering and prompt-injection test sets in CI
+3. ~~PII filtering and prompt-injection test sets in CI~~ (built, pattern-based)
 4. SSO identity in place of the demo header; end-to-end tests with a hosted model and Ollama
-5. Export the audit log to a SIEM; a usage and cost dashboard; policy changes gated on owner approval (CODEOWNERS)
+5. A classifier-based injection check alongside the patterns; a larger, outside red-team set
+6. Export the audit log to a SIEM; a usage and cost dashboard; policy changes gated on owner approval (CODEOWNERS)
 
 ## License
 

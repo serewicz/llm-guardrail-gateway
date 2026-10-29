@@ -31,12 +31,13 @@ class Ledger:
         self.tokens = defaultdict(lambda: [0, 0, 0])  # (month, dept) -> [in, out, requests]
 
     def add(self, rec: dict):
-        if rec.get("step") != "decision" or rec.get("outcome") not in ("allowed", "warned"):
+        # Any decision that reached a model costs money, even if the answer was withheld afterwards.
+        if rec.get("step") != "decision" or not (rec.get("cost_usd") or rec.get("outcome") in ("allowed", "warned")):
             return
         k = (month_key(rec["ts"]), rec["dept"])
-        self.spend[k] += rec.get("cost_usd", 0.0)
+        self.spend[k] += rec.get("cost_usd", 0.0) or 0.0
         t = self.tokens[k]
-        t[0] += rec.get("tokens_in", 0); t[1] += rec.get("tokens_out", 0); t[2] += 1
+        t[0] += rec.get("tokens_in", 0) or 0; t[1] += rec.get("tokens_out", 0) or 0; t[2] += 1
 
     @classmethod
     def from_records(cls, records) -> "Ledger":

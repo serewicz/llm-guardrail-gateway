@@ -59,6 +59,11 @@ def validate(raw: dict) -> Policy:
             raise PolicyError(f"user {u} maps to unknown department {d}")
     if p.prompt_mode() not in PROMPT_MODES:
         raise PolicyError(f"audit.log_prompt_text must be one of {sorted(PROMPT_MODES)}")
+    for kind, act in {"default": p.pii.get("action", "redact"), **p.pii.get("types", {})}.items():
+        if act not in {"block", "redact", "warn"}:
+            raise PolicyError(f"pii action for {kind} must be block, redact or warn")
+    if p.injection.get("action", "block_and_review") not in {"block_and_review", "warn"}:
+        raise PolicyError("injection.action must be block_and_review or warn")
     pct = p.budgets.get("warn_at_pct", 80)
     if not 0 < pct <= 100:
         raise PolicyError("budgets.warn_at_pct must be in (0, 100]")

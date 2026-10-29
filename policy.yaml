@@ -34,3 +34,21 @@ users:
 
 audit:
   log_prompt_text: hash   # full | hash | omit
+
+pii:
+  action: redact          # default for any type not listed: block | redact | warn
+  types:
+    ssn: block
+    card_number: block
+    account_number: redact
+    phone: redact
+    email: redact
+    address: warn         # warn also adds the 'pii' label, which keeps the request on-prem
+  scan_output: true       # redact PII in answers too
+
+injection:
+  warn_at: 0.3            # heuristic score, 0..1
+  block_at: 0.5
+  action: block_and_review   # block_and_review | warn
+  scan_retrieved: true       # also score text the backend retrieved
+  retrieved_block_at: 0.3    # stricter: a source document has no reason to address the model

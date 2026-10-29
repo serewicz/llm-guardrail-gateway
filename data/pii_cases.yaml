@@ -1,0 +1,38 @@
+# Seeded PII test set. ALL values are fictional (555 phones, example.* emails,
+# invalid-range or textbook SSNs, test card numbers). expect: list of kinds.
+positives:
+  - {text: "My SSN is 123-45-6789, can you check my file?", expect: [ssn]}
+  - {text: "SSN: 234 56 7890", expect: [ssn]}
+  - {text: "social security number 345678901 on the form", expect: [ssn]}
+  - {text: "ssn#456789012", expect: [ssn]}
+  - {text: "Account number 0012345678 is past due", expect: [account_number]}
+  - {text: "acct #88412-3390-17 needs a payment plan", expect: [account_number]}
+  - {text: "Customer no. 44718829 called about an outage", expect: [account_number]}
+  - {text: "routing 021000021 and the rest", expect: [account_number]}
+  - {text: "card 4111 1111 1111 1111 exp 12/29", expect: [card_number]}
+  - {text: "pay with 5500-0000-0000-0004", expect: [card_number]}
+  - {text: "Call me at (512) 555-0147 after 5", expect: [phone]}
+  - {text: "my cell is 512-555-0199", expect: [phone]}
+  - {text: "+1 737 555 0123 is the field office", expect: [phone]}
+  - {text: "text 512.555.0110 when the crew arrives", expect: [phone]}
+  - {text: "Email jane.doe@example.com with the report", expect: [email]}
+  - {text: "cc ops+outage@example.org please", expect: [email]}
+  - {text: "Service address is 1234 Lakeview Dr, Austin", expect: [address]}
+  - {text: "meter at 77 N Ranch Road 620 Way", expect: [address]}
+  - {text: "Send it to 4502 Old Spicewood Springs Rd.", expect: [address]}
+  - {text: "Deliver to 18 Bee Cave Pkwy", expect: [address]}
+  - {text: "Jane, 512-555-0147, jane@example.com, SSN 123-45-6789", expect: [phone, email, ssn]}
+  - {text: "acct 99887766 at 900 Congress Ave", expect: [account_number, address]}
+negatives:
+  - "Lake Travis was 681.2 feet msl on October 1."
+  - "Mansfield Dam has 24 floodgates."
+  - "The 2025 water management plan was approved in March."
+  - "Order 3 transformers rated 25 kVA."
+  - "CIP-007 R2 requires patch evaluation every 35 days."
+  - "Release rate peaked at 120,000 cfs in 1938."
+  - "Ticket INC-20261028-0042 is closed."
+  - "Version 1.2.3 of the policy took effect."
+  - "Call the main line for help."
+  - "The meeting is at 10:30 in room 204."
+  - "Feeder 12 tripped at 14:02 and reclosed."
+  - "Budget: $200 per month for water operations."
