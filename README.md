@@ -131,6 +131,8 @@ This is a small, self-written test set. It shows the checks work as designed. It
 - **Costs are estimates.** Token counts from the mock and the RAG app use ~4 characters per token. Prices in `policy.yaml` are placeholders.
 - **The budget check runs before the call**, so a department can overshoot its limit by one request.
 - **Labels come from the caller** (or the RAG app). The gateway does not classify documents itself.
+- **Retrieved-text scanning needs the passage text.** utility-rag-assistant's `/ask` currently returns source metadata (doc, title, label, URL) but not the passage text, so in front of that app the retrieved-text check has nothing to scan. It is tested here with mock providers. It needs a small change to utility-rag-assistant so `/ask` returns the passage text.
+- **The utility-rag provider is tested against a mocked `/ask` response**, not a live instance.
 - **The hosted and Ollama providers are written but not tested end to end.** Everything above ran against mock models.
 - **The audit log is tamper-evident, not tamper-proof.** Someone with write access can rewrite the whole file. Ship it to WORM storage or a SIEM.
 - It is **not NERC CIP certified**, and it **does not replace a security review**.
@@ -140,9 +142,10 @@ This is a small, self-written test set. It shows the checks work as designed. It
 1. ~~Gateway, audit log, per-user and per-department cost tracking~~ (built)
 2. ~~Budgets with warn and stop, policy YAML and its tests~~ (built)
 3. ~~PII filtering and prompt-injection test sets in CI~~ (built, pattern-based)
-4. SSO identity in place of the demo header; end-to-end tests with a hosted model and Ollama
-5. A classifier-based injection check alongside the patterns; a larger, outside red-team set
-6. Export the audit log to a SIEM; a usage and cost dashboard; policy changes gated on owner approval (CODEOWNERS)
+4. Have utility-rag-assistant return the retrieved passage text so the gateway can scan it, then run an end-to-end test against a live instance
+5. SSO identity in place of the demo header; end-to-end tests with a hosted model and Ollama
+6. A classifier-based injection check alongside the patterns; a larger, outside red-team set
+7. Export the audit log to a SIEM; a usage and cost dashboard; policy changes gated on owner approval (CODEOWNERS)
 
 ## License
 
